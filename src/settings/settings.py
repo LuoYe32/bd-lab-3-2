@@ -20,6 +20,8 @@ class Settings(BaseSettings):
 
     # Docker
     docker_image: str = "bd-lab-1-6:latest"
+    dockerhub_username: Optional[str] = None
+    dockerhub_token: Optional[str] = None
 
     model_config = {
         "env_file": ".env",
