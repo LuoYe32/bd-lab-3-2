@@ -28,54 +28,55 @@ jobs:
           pip install -r requirements.txt
           pip install "pathspec==0.12.1"
 
-      - name: Validate required secrets
+      - name: Install Ansible
+        run: pip install ansible
+
+      - name: Create vault password file
+        run: echo "${{ secrets.VAULT_PASSWORD }}" > .vault_pass.txt
+
+      - name: Generate .env from Vault
         run: |
-          if [ -z "${{ secrets.QDRANT_API_KEY }}" ]; then
-            echo "QDRANT_API_KEY is missing"
-            exit 1
-          fi
-      
-          if [ -z "${{ secrets.DOCKERHUB_USERNAME }}" ]; then
-            echo "DOCKERHUB_USERNAME is missing"
-            exit 1
-          fi
-      
-          if [ -z "${{ secrets.DOCKERHUB_TOKEN }}" ]; then
-            echo "DOCKERHUB_TOKEN is missing"
-            exit 1
-          fi
+          ansible-playbook deploy.yml --vault-password-file .vault_pass.txt --tags "env_only"
+
+      - name: Validate required env vars
+        run: |
+          source .env
+          if [ -z "$QDRANT_API_KEY" ]; then echo "QDRANT_API_KEY missing"; exit 1; fi
+          if [ -z "$DOCKERHUB_USERNAME" ]; then echo "DOCKERHUB_USERNAME missing"; exit 1; fi
+          if [ -z "$DOCKERHUB_TOKEN" ]; then echo "DOCKERHUB_TOKEN missing"; exit 1; fi
 
       - name: Start Qdrant
         run: |
+          source .env
           docker network create app-net || true
 
           docker run -d \
             --network app-net \
-            -p ${{ secrets.QDRANT_PORT }}:${{ secrets.QDRANT_PORT }} \
-            -e QDRANT__SERVICE__API_KEY=${{ secrets.QDRANT_API_KEY }} \
+            -p $QDRANT_PORT:$QDRANT_PORT \
+            -e QDRANT__SERVICE__API_KEY=$QDRANT_API_KEY \
             --name qdrant \
             qdrant/qdrant
 
       - name: Wait for Qdrant
         run: |
+          source .env
           for i in {1..30}; do
             if curl -sf \
-              -H "api-key: ${{ secrets.QDRANT_API_KEY }}" \
+              -H "api-key: $QDRANT_API_KEY" \
               http://localhost:6333 > /dev/null; then
               echo "Qdrant is ready"
               exit 0
             fi
-            echo "Waiting for Qdrant..."
             sleep 2
           done
-          echo "Qdrant failed to start"
           docker logs qdrant || true
           exit 1
 
       - name: Configure DVC (DagsHub)
         run: |
-          dvc remote modify origin --local access_key_id "${{ secrets.DAGSHUB_ACCESS_KEY }}"
-          dvc remote modify origin --local secret_access_key "${{ secrets.DAGSHUB_SECRET_KEY }}"
+          source .env
+          dvc remote modify origin --local access_key_id "$DAGSHUB_ACCESS_KEY"
+          dvc remote modify origin --local secret_access_key "$DAGSHUB_SECRET_KEY"
 
       - name: DVC pull data & artifacts
         run: dvc pull -q || true
@@ -84,40 +85,28 @@ jobs:
         run: dvc repro
 
       - name: Run tests
-        env:
-          QDRANT_HOST: ${{ secrets.QDRANT_HOST }}
-          QDRANT_PORT: ${{ secrets.QDRANT_PORT }}
-          QDRANT_API_KEY: ${{ secrets.QDRANT_API_KEY }}
-        run: pytest -q | tee test_output.txt
+        run: |
+          source .env
+          pytest -q | tee test_output.txt
 
       - name: Login to DockerHub
-        uses: docker/login-action@v3
-        with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
+        run: |
+          source .env
+          echo $DOCKERHUB_TOKEN | docker login -u $DOCKERHUB_USERNAME --password-stdin
 
       - name: Build and push
         run: |
-          IMAGE="${{ secrets.DOCKERHUB_USERNAME }}/bd-lab-3-2:latest"
+          source .env
+          IMAGE="$DOCKERHUB_USERNAME/bd-lab-3-2:latest"
           docker build -t "$IMAGE" .
           docker push "$IMAGE"
 
       - name: Generate DevSecOps metadata
         run: |
+          source .env
           echo "docker_image:" > dev_sec_ops.yml
-          echo "  name: ${{ secrets.DOCKERHUB_USERNAME }}/bd-lab-3-2" >> dev_sec_ops.yml
+          echo "  name: $DOCKERHUB_USERNAME/bd-lab-3-2" >> dev_sec_ops.yml
           echo "  tag: latest" >> dev_sec_ops.yml
-          echo "" >> dev_sec_ops.yml
-
-          echo "git:" >> dev_sec_ops.yml
-          echo "  last_5_commits:" >> dev_sec_ops.yml
-          git log -5 --pretty=format:"    - %H" >> dev_sec_ops.yml
-          echo "" >> dev_sec_ops.yml
-
-          echo "tests:" >> dev_sec_ops.yml
-          echo "  framework: pytest" >> dev_sec_ops.yml
-          echo "  result_summary:" >> dev_sec_ops.yml
-          tail -n 2 test_output.txt | sed 's/^/    /' >> dev_sec_ops.yml
 
       - name: Upload DevSecOps metadata
         uses: actions/upload-artifact@v4
