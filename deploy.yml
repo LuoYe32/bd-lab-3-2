@@ -6,7 +6,7 @@
   tasks:
     - name: Generate .env file from vault
       copy:
-        dest: .env
+        dest: "{{ playbook_dir }}/.env"
         content: |
           QDRANT_HOST={{ qdrant_host }}
           QDRANT_PORT={{ qdrant_port }}
