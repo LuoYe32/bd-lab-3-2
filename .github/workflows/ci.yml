@@ -38,6 +38,11 @@ jobs:
         run: |
           ansible-playbook deploy.yml --vault-password-file .vault_pass.txt --tags "env_only"
 
+      - name: Debug files
+        run: |
+          pwd
+          ls -la
+
       - name: Validate required env vars
         run: |
           source .env

@@ -1,10 +1,14 @@
 - name: Deploy ML service
   hosts: localhost
+  connection: local
+  gather_facts: false
+
   vars_files:
     - secrets.yml
 
   tasks:
     - name: Generate .env file from vault
+      tags: env_only
       copy:
         dest: "{{ playbook_dir }}/.env"
         content: |
