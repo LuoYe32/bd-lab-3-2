@@ -131,3 +131,6 @@ dmypy.json
 # Place data for non local DVC
 # /data 
 .idea/
+
+# Vault
+.vault_pass.txt
