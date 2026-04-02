@@ -13,6 +13,7 @@ class QdrantService:
             host=settings.qdrant_host,
             port=settings.qdrant_port,
             api_key=settings.qdrant_api_key,
+            https=False,
         )
         self.collection_name = "predictions"
 
