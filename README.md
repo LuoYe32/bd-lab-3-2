@@ -152,6 +152,97 @@ CD pipeline:
 
 ---
 
+# Secrets Management (Ansible Vault)
+
+В рамках лабораторной работы реализовано безопасное хранение и использование секретов с использованием Ansible Vault.
+
+## Хранилище секретов
+
+В проекте используется Ansible Vault как хранилище секретов.
+
+Секреты хранятся в зашифрованном файле:
+
+```
+secrets.yml
+```
+
+Файл зашифрован и не содержит открытых значений.
+
+### Какие секреты используются
+
+В Vault хранятся:
+
+QDRANT_API_KEY
+DAGSHUB_ACCESS_KEY
+DAGSHUB_SECRET_KEY
+DOCKERHUB_USERNAME
+DOCKERHUB_TOKEN
+
+### Получение секретов
+
+При запуске CI/CD pipeline:
+
+создаётся файл с паролем Vault:
+
+```
+.vault_pass.txt
+```
+
+выполняется расшифровка:
+```
+ansible-playbook deploy.yml --vault-password-file .vault_pass.txt --tags env_only
+```
+
+генерируется временный файл:
+```
+.env
+```
+
+### Использование в приложении
+
+Секреты передаются:
+
+- через переменные окружения (`.env`)
+- считываются через `pydantic BaseSettings`
+```python
+class Settings(BaseSettings):
+    qdrant_api_key: Optional[str]
+    ...
+```
+
+### Очистка секретов
+
+После выполнения pipeline:
+
+- .env удаляется
+- .vault_pass.txt удаляется
+```
+rm -f .env .vault_pass.txt
+```
+
+Это предотвращает утечку секретов.
+
+### Интеграция с Docker
+
+При запуске контейнеров:
+
+- секреты передаются через переменные окружения
+- не сохраняются внутри образа
+```
+environment:
+  - QDRANT_API_KEY=${QDRANT_API_KEY}
+```
+
+### Интеграция с CI/CD
+CI pipeline расшифровывает Vault и использует секреты для:
+- доступа к DVC (DagsHub)
+- подключения к Qdrant
+- публикации Docker image
+
+CD pipeline повторно расшифровывает Vault, запускает сервисы, выполняет функциональное тестирование
+
+---
+
 # API
 
 После запуска доступен Swagger UI:
